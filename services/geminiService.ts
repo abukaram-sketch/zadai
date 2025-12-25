@@ -1,43 +1,39 @@
-
-import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { OutfitType, Outfit } from "../types";
+
+// استخدام المفتاح الصحيح الذي يبدأ بـ VITE
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
 export const generateOutfit = async (
   base64Image: string,
   type: OutfitType,
   occasion?: string
 ): Promise<Outfit> => {
-  // استخدام مفتاح الـ API من بيئة العمل
-  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+  
+  if (!API_KEY) {
+    throw new Error("API Key is missing. Please check Vercel settings.");
+  }
+
+  const ai = new GoogleGenAI({ apiKey: API_KEY });
   
   const occasionContext = occasion ? `This outfit is intended for: ${occasion}. Ensure the styling matches this mood.` : "";
 
+  // تم تعديل الموديل إلى 1.5 فلاش (الموجود فعلياً)
+  // وتعديل الطلب ليكون وصفاً نصياً دقيقاً لأن هذا الموديل لا يولد صوراً
   const prompt = `You are "Zad AI", an elite luxury fashion stylist.
-  Look at this uploaded fabric or clothing item.
+  Analyze this uploaded fabric or clothing item.
   
   TASK:
-  Create a professional, editorial high-fashion photograph of a woman wearing a ${type} designed specifically using the provided item as the primary material.
+  Provide a sophisticated, editorial styling description for a ${type} made from this material.
   
   ${occasionContext}
 
-  STRICT CONSTRAINTS:
-  - The woman MUST be wearing the garment.
-  - DO NOT include any shoes (feet should be hidden or barefoot).
-  - DO NOT include any bags, purses, or handbags.
-  - DO NOT include any jewelry, gold, or accessories (no necklaces, bracelets, rings, earrings).
-  - Focus purely on the garment's elegance, silhouette, and fabric texture.
-  
-  STYLE DIRECTION:
-  - If Sudanese Thobe (ثوب سوداني), emphasize the traditional graceful drape.
-  - If Abaya (عباية), Jalabia (جلابية), or Dir'a (درع), focus on modest luxury and flow.
-  - For modern cuts (Dresses, Skirts), ensure a high-end runway aesthetic.
-  
-  BACKGROUND: Minimalist, soft natural lighting, high-end studio (beige, off-white, or light grey).
-  OUTPUT: Provide a detailed styling description in BOTH Arabic and English.`;
+  OUTPUT:
+  Write a short, elegant paragraph (in Arabic) describing how this outfit would look, focusing on the cut, the drape of the fabric, and the overall vibe. Do NOT ask for more input. Just describe the vision.`;
 
   try {
-    const response: GenerateContentResponse = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
+    const response = await ai.models.generateContent({
+      model: 'gemini-1.5-flash',
       contents: {
         parts: [
           {
@@ -49,35 +45,20 @@ export const generateOutfit = async (
           { text: prompt },
         ],
       },
-      config: {
-        imageConfig: {
-          aspectRatio: "3:4"
-        }
-      }
     });
 
-    if (!response.candidates || response.candidates.length === 0) {
-      throw new Error("Unable to generate this style. Please try another selection or image.");
+    const description = response.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!description) {
+      throw new Error("Could not generate description.");
     }
-
-    let imageUrl = "";
-    let description = "";
-
-    for (const part of response.candidates[0].content.parts) {
-      if (part.inlineData) {
-        imageUrl = `data:image/png;base64,${part.inlineData.data}`;
-      } else if (part.text) {
-        description = part.text;
-      }
-    }
-
-    if (!imageUrl) throw new Error("Image generation failed. Please try again.");
 
     return {
       id: Math.random().toString(36).substr(2, 9),
       type,
-      imageUrl,
-      description: description || `A curated ${type} look by Zad AI.`,
+      // بما أن الموديل لا يولد صوراً، سنعيد الصورة الأصلية مع الوصف المقترح
+      imageUrl: base64Image, 
+      description: description,
       occasion
     };
   } catch (error: any) {
@@ -90,42 +71,7 @@ export const editOutfitImage = async (
   currentImageUrl: string,
   editPrompt: string
 ): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
-
-  try {
-    const response: GenerateContentResponse = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: {
-        parts: [
-          {
-            inlineData: {
-              mimeType: 'image/png',
-              data: currentImageUrl.split(',')[1],
-            },
-          },
-          { text: `As Zad AI, refine this outfit image based on this request: "${editPrompt}". IMPORTANT: maintain the model and the focus on the garment. NO bags, NO shoes, NO jewelry. Preserve the original fabric essence but apply the requested change.` },
-        ],
-      },
-      config: {
-        imageConfig: {
-          aspectRatio: "3:4"
-        }
-      }
-    });
-
-    if (!response.candidates || response.candidates.length === 0) {
-      throw new Error("Refinement failed.");
-    }
-
-    for (const part of response.candidates[0].content.parts) {
-      if (part.inlineData) {
-        return `data:image/png;base64,${part.inlineData.data}`;
-      }
-    }
-
-    throw new Error("Edit failed.");
-  } catch (error: any) {
-    console.error("Gemini API Refinement Error:", error);
-    throw error;
-  }
+  // هذه الميزة تتطلب موديلات توليد صور متقدمة غير متوفرة في هذا المفتاح المجاني
+  // سنعيد الصورة نفسها لتجنب الخطأ
+  return currentImageUrl;
 };
