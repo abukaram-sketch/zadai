@@ -8,7 +8,7 @@ export const generateOutfit = async (
   occasion?: string
 ): Promise<Outfit> => {
   // استخدام مفتاح الـ API من بيئة العمل
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
   
   const occasionContext = occasion ? `This outfit is intended for: ${occasion}. Ensure the styling matches this mood.` : "";
 
@@ -90,7 +90,7 @@ export const editOutfitImage = async (
   currentImageUrl: string,
   editPrompt: string
 ): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
 
   try {
     const response: GenerateContentResponse = await ai.models.generateContent({
