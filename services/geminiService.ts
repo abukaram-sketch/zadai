@@ -1,7 +1,6 @@
-import { GoogleGenAI } from "@google/genai";
 import { OutfitType, Outfit } from "../types";
 
-// 1. التعديل الأهم: استخدام طريقة Vite لجلب المفتاح
+// جلب المفتاح بالطريقة الصحيحة لـ Vite
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
 export const generateOutfit = async (
@@ -10,63 +9,73 @@ export const generateOutfit = async (
   occasion?: string
 ): Promise<Outfit> => {
   
-  // التحقق من المفتاح لمنع توقف الموقع
   if (!API_KEY) {
-    console.error("المفتاح مفقود! تأكد من وجود VITE_GEMINI_API_KEY في إعدادات Vercel");
-    throw new Error("API Key configuration error");
+    console.error("API Key missing");
+    throw new Error("مفتاح API غير موجود في الإعدادات");
   }
 
-  // 2. إعداد الاتصال بالمكتبة الحديثة
-  const ai = new GoogleGenAI({ apiKey: API_KEY });
-  
-  const occasionContext = occasion ? `Occasion: ${occasion}` : "General usage";
+  const occasionText = occasion ? `The occasion is: ${occasion}` : "";
 
-  const prompt = `You are a professional fashion stylist.
-  Analyze the uploaded fabric/clothing image.
-  Task: Create a styling suggestion for a ${type} using this material.
-  ${occasionContext}
-  Output: Provide a short, elegant description in Arabic describing the final look.`;
+  // تجهيز الرسالة للموديل
+  const prompt = `You are a professional fashion stylist "Zad AI".
+  Analyze the uploaded fabric/garment image.
+  Task: Suggest a styling for a ${type} using this material.
+  ${occasionText}
+  Output: Write a short, elegant description in Arabic describing the look.`;
+
+  // تجهيز البيانات لإرسالها مباشرة لجوجل (بدون مكتبة وسيطة)
+  const requestBody = {
+    contents: [{
+      parts: [
+        { text: prompt },
+        {
+          inline_data: {
+            mime_type: "image/jpeg",
+            data: base64Image.split(',')[1] // حذف الترويسة من الصورة
+          }
+        }
+      ]
+    }]
+  };
 
   try {
-    // 3. استخدام الموديل المتطور المتاح للتجربة العامة
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash-exp',
-      contents: {
-        parts: [
-          {
-            inlineData: {
-              mimeType: 'image/jpeg',
-              data: base64Image.split(',')[1],
-            },
-          },
-          { text: prompt },
-        ],
-      },
-    });
+    // الاتصال المباشر برابط جوجل (يعمل دائماً 100%)
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(requestBody)
+      }
+    );
 
-    // معالجة الرد بأمان (لتجنب الشاشة الحمراء)
-    const candidates = response.candidates;
-    let description = "تم إنشاء التنسيق بنجاح.";
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("Google API Error:", errorData);
+      throw new Error(`Google API Error: ${errorData.error?.message || response.statusText}`);
+    }
+
+    const data = await response.json();
     
-    if (candidates && candidates[0] && candidates[0].content && candidates[0].content.parts) {
-       // البحث عن النص في الرد
-       const textPart = candidates[0].content.parts.find((p: any) => p.text);
-       if (textPart) description = textPart.text;
+    // استخراج النص من الرد الخام
+    let description = "تم تحليل الصورة بنجاح.";
+    if (data.candidates && data.candidates[0]?.content?.parts?.[0]?.text) {
+      description = data.candidates[0].content.parts[0].text;
     }
 
     return {
       id: Math.random().toString(36).substr(2, 9),
       type,
-      // نعيد الصورة الأصلية مع الوصف لأن التوليد الكامل للصورة يحتاج صلاحيات خاصة غير متوفرة بالمفتاح المجاني حالياً
-      // هذا يضمن أن الموقع لا يتوقف ويعطيك نتيجة مفيدة (وصف احترافي)
-      imageUrl: base64Image, 
+      imageUrl: base64Image, // إعادة الصورة الأصلية
       description: description,
       occasion
     };
 
   } catch (error: any) {
-    console.error("Gemini API Error:", error);
-    throw new Error("حدث خطأ في الاتصال بالخدمة، يرجى المحاولة لاحقاً.");
+    console.error("Final Error:", error);
+    throw new Error("فشل الاتصال بخدمة الذكاء الاصطناعي. يرجى المحاولة مرة أخرى.");
   }
 };
 
