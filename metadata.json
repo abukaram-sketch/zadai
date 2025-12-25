@@ -1,0 +1,7 @@
+{
+  "name": "Copy of AuraStylist - Your AI Virtual Stylist",
+  "description": "A premium AI-powered virtual stylist that creates curated outfits from your single clothing items and lets you refine them with natural language commands.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
