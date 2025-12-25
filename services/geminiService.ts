@@ -1,6 +1,6 @@
 import { OutfitType, Outfit } from "../types";
 
-// Get the API key from Vite environment variables
+// Get API Key from Vite environment
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
 export const generateOutfit = async (
@@ -9,31 +9,26 @@ export const generateOutfit = async (
   occasion?: string
 ): Promise<Outfit> => {
   
-  // 1. Validation
+  // 1. Check if Key exists
   if (!API_KEY) {
-    console.error("Error: VITE_GEMINI_API_KEY is missing in Vercel settings.");
-    throw new Error("API Key is missing.");
+    console.error("API Key is missing. Check Vercel Settings -> Environment Variables -> VITE_GEMINI_API_KEY");
+    throw new Error("Configuration Error: API Key is missing.");
   }
 
-  const occasionText = occasion ? `The occasion is: ${occasion}` : "";
+  // 2. Clean the base64 string (Remove 'data:image/jpeg;base64,' prefix)
+  const cleanBase64 = base64Image.includes(',') ? base64Image.split(',')[1] : base64Image;
 
-  // 2. Prepare the prompt
-  const prompt = `You are a professional fashion stylist. 
-  Analyze the uploaded fabric/garment image.
-  Task: Suggest a styling for a ${type} using this material.
-  ${occasionText}
-  Output: Write a short, elegant description in Arabic describing the final look.`;
+  const occasionText = occasion ? `Occasion: ${occasion}` : "General use";
 
-  // 3. Prepare the payload for REST API
-  // We use REST API to avoid @google/genai library issues in the browser
-  const requestBody = {
+  // 3. Prepare the request payload for Gemini 1.5 Flash (Direct REST API)
+  const payload = {
     contents: [{
       parts: [
-        { text: prompt },
+        { text: `You are a fashion stylist. Analyze this image. Suggest a ${type} outfit using this fabric. ${occasionText}. Output: A short, elegant description in Arabic.` },
         {
           inline_data: {
             mime_type: "image/jpeg",
-            data: base64Image.split(',')[1] // Remove the header part of base64
+            data: cleanBase64
           }
         }
       ]
@@ -41,44 +36,42 @@ export const generateOutfit = async (
   };
 
   try {
-    // 4. Call Google Gemini API directly
+    // 4. Send Request directly to Google (Bypassing the buggy library)
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`,
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(requestBody)
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
       }
     );
 
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error("Gemini API Error:", errorData);
-      throw new Error(`API Error: ${errorData.error?.message || response.statusText}`);
+      const errorDetails = await response.json();
+      console.error("Google API Error:", errorDetails);
+      throw new Error("Connection refused by Google AI.");
     }
 
     const data = await response.json();
     
-    // 5. Extract text from response
-    let description = "Styling suggestion generated successfully.";
+    // 5. Extract the text response
+    let description = "تم إنشاء التنسيق.";
     if (data.candidates && data.candidates[0]?.content?.parts?.[0]?.text) {
       description = data.candidates[0].content.parts[0].text;
     }
 
-    // 6. Return the result
+    // 6. Return result (Using original image as preview)
     return {
       id: Math.random().toString(36).substr(2, 9),
       type,
-      imageUrl: base64Image, // Return original image as 1.5-flash is text-only
+      imageUrl: base64Image,
       description: description,
       occasion
     };
 
-  } catch (error: any) {
-    console.error("Service Error:", error);
-    throw new Error("Failed to generate styling. Please check the console for details.");
+  } catch (error) {
+    console.error("Final Error:", error);
+    throw new Error("System Error: Could not connect to AI service.");
   }
 };
 
@@ -86,6 +79,5 @@ export const editOutfitImage = async (
   currentImageUrl: string,
   editPrompt: string
 ): Promise<string> => {
-  // Image editing is not supported in the free tier of this model
   return currentImageUrl;
 };
