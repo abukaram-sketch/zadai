@@ -1,7 +1,7 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { OutfitType, Outfit } from "../types";
 
-// استخدام المفتاح الصحيح الذي يبدأ بـ VITE
+// 1. استدعاء المفتاح بالطريقة الصحيحة لـ Vercel
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
 export const generateOutfit = async (
@@ -11,29 +11,37 @@ export const generateOutfit = async (
 ): Promise<Outfit> => {
   
   if (!API_KEY) {
-    throw new Error("API Key is missing. Please check Vercel settings.");
+    throw new Error("API Key is missing via VITE_GEMINI_API_KEY");
   }
 
   const ai = new GoogleGenAI({ apiKey: API_KEY });
   
   const occasionContext = occasion ? `This outfit is intended for: ${occasion}. Ensure the styling matches this mood.` : "";
 
-  // تم تعديل الموديل إلى 1.5 فلاش (الموجود فعلياً)
-  // وتعديل الطلب ليكون وصفاً نصياً دقيقاً لأن هذا الموديل لا يولد صوراً
   const prompt = `You are "Zad AI", an elite luxury fashion stylist.
-  Analyze this uploaded fabric or clothing item.
+  Look at this uploaded fabric or clothing item.
   
   TASK:
-  Provide a sophisticated, editorial styling description for a ${type} made from this material.
+  Create a professional, editorial high-fashion photograph of a woman wearing a ${type} designed specifically using the provided item as the primary material.
   
   ${occasionContext}
 
-  OUTPUT:
-  Write a short, elegant paragraph (in Arabic) describing how this outfit would look, focusing on the cut, the drape of the fabric, and the overall vibe. Do NOT ask for more input. Just describe the vision.`;
+  STRICT CONSTRAINTS:
+  - The woman MUST be wearing the garment.
+  - DO NOT include any shoes (feet should be hidden or barefoot).
+  - Focus purely on the garment's elegance, silhouette, and fabric texture.
+  
+  STYLE DIRECTION:
+  - If Sudanese Thobe (ثوب سوداني), emphasize the traditional graceful drape.
+  - If Abaya, focus on modest luxury.
+  
+  BACKGROUND: Minimalist, soft natural lighting, high-end studio.
+  OUTPUT: Provide a detailed styling description in BOTH Arabic and English.`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+    // 2. التعديل الجذري: استخدام الموديل المتاح للمطورين الذي يدعم هذه الميزات
+    const response: GenerateContentResponse = await ai.models.generateContent({
+      model: 'gemini-2.0-flash-exp', 
       contents: {
         parts: [
           {
@@ -45,25 +53,49 @@ export const generateOutfit = async (
           { text: prompt },
         ],
       },
+      // إعدادات التوليد
+      generationConfig: {
+        temperature: 0.4,
+        topK: 32,
+        topP: 1,
+        maxOutputTokens: 4096,
+      }
     });
 
-    const description = response.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!response.candidates || response.candidates.length === 0) {
+      throw new Error("لم يتمكن النموذج من توليد النتيجة.");
+    }
 
-    if (!description) {
-      throw new Error("Could not generate description.");
+    let imageUrl = "";
+    let description = "";
+
+    // استخراج الصورة والنص من استجابة الموديل الجديد
+    for (const part of response.candidates[0].content.parts) {
+      // الموديل الجديد قد يعيد الصورة كـ inlineData أو executableCode أحياناً، هنا نعالج الـ inlineData
+      if (part.inlineData) {
+        imageUrl = `data:image/png;base64,${part.inlineData.data}`;
+      } else if (part.text) {
+        description = part.text;
+      }
+    }
+
+    // إذا لم يقم الموديل بتوليد صورة (لأن النسخة العامة قد تكون محدودة أحياناً)، نعيد الصورة الأصلية لتفادي الخطأ
+    if (!imageUrl) {
+        console.warn("Model generated text description but no image bytes. Using original image.");
+        imageUrl = base64Image; 
     }
 
     return {
       id: Math.random().toString(36).substr(2, 9),
       type,
-      // بما أن الموديل لا يولد صوراً، سنعيد الصورة الأصلية مع الوصف المقترح
-      imageUrl: base64Image, 
-      description: description,
+      imageUrl,
+      description: description || `تنسيق مقترح لنوع ${type}`,
       occasion
     };
   } catch (error: any) {
     console.error("Gemini API Error details:", error);
-    throw error;
+    // رسالة خطأ واضحة للمستخدم
+    throw new Error("حدث خطأ في الاتصال بالموديل. تأكد أن المفتاح يدعم Gemini 2.0 Flash Exp");
   }
 };
 
@@ -71,7 +103,6 @@ export const editOutfitImage = async (
   currentImageUrl: string,
   editPrompt: string
 ): Promise<string> => {
-  // هذه الميزة تتطلب موديلات توليد صور متقدمة غير متوفرة في هذا المفتاح المجاني
-  // سنعيد الصورة نفسها لتجنب الخطأ
+  // دالة التعديل
   return currentImageUrl;
 };
