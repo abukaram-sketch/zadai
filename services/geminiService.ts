@@ -7,7 +7,8 @@ export const generateOutfit = async (
   type: OutfitType,
   occasion?: string
 ): Promise<Outfit> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+  // استخدام مفتاح الـ API من بيئة العمل
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const occasionContext = occasion ? `This outfit is intended for: ${occasion}. Ensure the styling matches this mood.` : "";
 
@@ -80,6 +81,7 @@ export const generateOutfit = async (
       occasion
     };
   } catch (error: any) {
+    console.error("Gemini API Error details:", error);
     throw error;
   }
 };
@@ -88,7 +90,7 @@ export const editOutfitImage = async (
   currentImageUrl: string,
   editPrompt: string
 ): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   try {
     const response: GenerateContentResponse = await ai.models.generateContent({
@@ -123,6 +125,7 @@ export const editOutfitImage = async (
 
     throw new Error("Edit failed.");
   } catch (error: any) {
+    console.error("Gemini API Refinement Error:", error);
     throw error;
   }
 };
